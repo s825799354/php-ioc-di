@@ -1,0 +1,80 @@
+<?php
+require 'test.php';
+class MyContainer
+{
+    private $s;
+    public function __set($name, $value)
+    {
+        $this->s[$name] = $value;
+    }
+    public function __get($name)
+    {
+        return $this->build($this->s[$name]);
+    }
+
+    //创建对象
+    public function build($className)
+    {
+        if($className instanceof \Closure){
+            $className($this);
+        }
+        //构建反射
+
+        try {
+            $ref = new ReflectionClass($className);
+        } catch (ReflectionException $e) {
+            die($e->getMessage());
+        }
+        //获取构造函数
+        $constructor = $ref->getConstructor();
+        //没有构造函数直接实例化
+        if(is_null($constructor)){
+            return $ref->newInstance();
+        }
+        //获取构造函数的参数
+        $params = $constructor->getParameters();
+        //处理依赖并且注入
+        $dependencies = $this->getDependencies($params);
+        return $ref->newInstanceArgs($dependencies);
+    }
+
+    /**
+     * @param $params
+     * @return array
+     */
+    public function getDependencies($params)
+    {
+        $dep = [];//存储依赖的数组
+        foreach ($params as $param) {
+            $class = $param->getClass();
+            if(is_null($class)){
+                //处理依赖参数不是类的时候
+                $dep[] = $this->getNoClassValue($param);
+            }else{
+                //依赖参数是类的情况递归处理依赖类
+                $dep[] = $this->build($class->name);
+            }
+        }
+        return $dep;
+
+    }
+    public function getNoClassValue(ReflectionParameter $parameter){
+        if($parameter->isDefaultValueAvailable()){
+            return $parameter->getDefaultValue();
+        }
+        throw new Exception('没有默认值了');
+    }
+}
+Class b{
+    public function __construct($a = 1,$b =2)
+    {
+        var_dump($a,$b);
+    }
+}
+
+$c = new  MyContainer();
+$c->cmp = 'company';
+$c->cmp->doSomething();
+echo "______________________________\n";
+$dep = $c->build('department');
+$dep->doSomething();
